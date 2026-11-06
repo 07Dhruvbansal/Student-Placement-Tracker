@@ -8,19 +8,7 @@ dotenv.config();
 const app = express();
 
 app.use(express.json());
-const allowedOrigins = (process.env.CLIENT_ORIGIN || 'http://localhost:5173')
-  .split(',')
-  .map((origin) => origin.trim())
-  .filter(Boolean);
-
-app.use(cors({
-  origin(origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    }
-    return callback(new Error(`Origin ${origin} is not allowed by CORS.`));
-  },
-}));
+app.use(cors());
 
 // Mount API Routes
 app.use('/api/auth', require('./routes/authRoutes'));
@@ -30,10 +18,6 @@ app.use('/api/applications', require('./routes/applicationRoutes'));
 
 app.get('/', (req, res) => {
   res.send('Student Placement Tracker API running...');
-});
-
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok' });
 });
 
 const PORT = process.env.PORT || 5000;

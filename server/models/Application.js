@@ -9,7 +9,7 @@ const ApplicationSchema = new mongoose.Schema(
     department: { type: String, required: true },
     studentCgpa: { type: Number, required: true, min: 0, max: 10 },
     backlogsCount: { type: Number, required: true, min: 0 },
-    resumePublicId: { type: String, required: true },
+    resumePath: { type: String, required: true },
     resumeName: { type: String, required: true },
     matchScore: { type: Number, min: 0, max: 100 },
     matchedSkills: [{ type: String }],

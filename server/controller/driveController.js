@@ -1,11 +1,9 @@
 const JobDrive = require('../models/JobDrive');
 const Application = require('../models/Application');
+const fs = require('fs/promises');
+const path = require('path');
 const { evaluateResume } = require('../utils/resumeEvaluator');
-const {
-  uploadResume,
-  createResumeDownloadUrl,
-  deleteResume,
-} = require('../config/cloudinary');
+const resumeDirectory = path.resolve(__dirname, '..', 'uploads', 'resumes');
 
 const listDrives = async (req, res) => {
   try {
@@ -50,7 +48,7 @@ const createDrive = async (req, res) => {
 };
 
 const applyToDrive = async (req, res) => {
-  let uploadedResume;
+  let resumePath;
   try {
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'A PDF or DOCX resume is required.' });
@@ -96,7 +94,12 @@ const applyToDrive = async (req, res) => {
         : [meetsSkills ? 'resume skill match meets threshold' : 'resume skill match below 60%']),
     ].join('; ');
 
-    uploadedResume = await uploadResume(req.file.buffer);
+    await fs.mkdir(resumeDirectory, { recursive: true });
+    const safeExtension = path.extname(req.file.originalname).toLowerCase();
+    const resumeFilename = `${Date.now()}-${require('crypto').randomUUID()}${safeExtension}`;
+    resumePath = path.join(resumeDirectory, resumeFilename);
+    await fs.writeFile(resumePath, req.file.buffer, { flag: 'wx' });
+
     const application = await Application.create({
       drive: drive._id,
       student: req.user._id,
@@ -105,8 +108,7 @@ const applyToDrive = async (req, res) => {
       department,
       studentCgpa,
       backlogsCount,
-      resumePublicId: uploadedResume.publicId,
-      resumeFormat: uploadedResume.format,
+      resumePath,
       resumeName: req.file.originalname,
       matchScore: evaluation.matchScore,
       matchedSkills: evaluation.matchedSkills,
@@ -121,11 +123,13 @@ const applyToDrive = async (req, res) => {
       data: application,
     });
   } catch (error) {
-    if (uploadedResume?.publicId) {
+    if (resumePath) {
       try {
-        await deleteResume(uploadedResume.publicId);
+        await fs.unlink(resumePath);
       } catch (cleanupError) {
-        console.error(`Failed to clean up uploaded resume: ${cleanupError.message}`);
+        if (cleanupError.code !== 'ENOENT') {
+          console.error(`Failed to clean up uploaded resume: ${cleanupError.message}`);
+        }
       }
     }
     if (error.code === 11000) {
@@ -195,15 +199,7 @@ const downloadResume = async (req, res) => {
       return res.status(403).json({ success: false, message: 'You cannot access this resume.' });
     }
 
-    const downloadUrl = createResumeDownloadUrl(application.resumePublicId, application.resumeFormat);
-    const resumeResponse = await fetch(downloadUrl);
-    if (!resumeResponse.ok) {
-      return res.status(502).json({ success: false, message: 'Cloud storage could not provide this resume.' });
-    }
-
-    res.setHeader('Content-Type', 'application/octet-stream');
-    res.setHeader('Content-Disposition', `attachment; filename="${application.resumeName.replace(/["\\]/g, '_')}"`);
-    return res.send(Buffer.from(await resumeResponse.arrayBuffer()));
+    return res.download(application.resumePath, application.resumeName);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
